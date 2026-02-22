@@ -2,6 +2,7 @@ fastapi==0.131.0
 uvicorn==0.41.0
 pydantic==2.12.5
 python-dotenv==1.2.1
+openai==2.5.0
 
 # Testing
 httpx==0.28.1

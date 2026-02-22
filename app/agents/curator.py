@@ -1,24 +1,58 @@
 """Curator agent: builds structured KnowledgeCards from /promote commands."""
 
+import json
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.kb.guardian import check_policy
 from app.kb.schemas import KnowledgeCard
 from app.kb.store import store_card
 
 
+_FORMAT_ERROR = (
+    "Invalid /promote format. Use two lines: first line '/promote namespace=... tags=...', "
+    "then a JSON object on the next line(s) with KnowledgeCard fields."
+)
+
+
+def _parse_key_values(raw: str) -> Dict[str, str]:
+    """Parse key=value pairs from promote metadata line."""
+    pairs: Dict[str, str] = {}
+    for match in re.finditer(
+        r"(?P<key>\w+)\s*=\s*(?P<value>\"[^\"]*\"|'[^']*'|.+?)(?=\s+\w+\s*=|$)",
+        raw,
+    ):
+        key = match.group("key").strip().lower()
+        value = match.group("value").strip()
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            value = value[1:-1]
+        pairs[key] = value.strip()
+    return pairs
+
+
+def _to_list(value: Any) -> List[str]:
+    """Normalise list-like fields from JSON payload."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    return [str(value).strip()] if str(value).strip() else []
+
+
 def run(message: str, namespace: str) -> Tuple[Optional[KnowledgeCard], str]:
-    """Parse a /promote command and create a KnowledgeCard.
+    """Parse a strict /promote command and create a KnowledgeCard.
 
-    Expected format (minimal)::
+    Required format::
 
-        /promote title="..." problem="..." solution="..."
-
-    Unrecognised fields are gracefully ignored.  All required fields that are
-    not provided in the message are filled with placeholder values so the MVP
-    remains functional without strict input validation.
+        /promote namespace=BRIDGE tags=router,rag
+        {"title":"...", "problem":"...", ...}
 
     Args:
         message: The raw /promote message from the user.
@@ -26,31 +60,57 @@ def run(message: str, namespace: str) -> Tuple[Optional[KnowledgeCard], str]:
 
     Returns:
         A tuple of (KnowledgeCard | None, status_message).
-        The card is None when the guardian blocks the operation.
+        The card is None when validation fails or the operation is blocked.
     """
-    # Run policy check on the full message before doing anything else
-    allowed, reason = check_policy(message)
+    stripped = message.strip()
+    if "\n" not in stripped:
+        return None, _FORMAT_ERROR
+
+    first_line, json_blob = stripped.split("\n", 1)
+    metadata_source = first_line
+    if metadata_source.lower().startswith("/promote"):
+        metadata_source = metadata_source[len("/promote") :].strip()
+    metadata = _parse_key_values(metadata_source)
+
+    raw_json_payload = json_blob.strip()
+    if not raw_json_payload:
+        return None, _FORMAT_ERROR
+
+    # Run policy check on metadata + raw JSON payload before parsing/storing.
+    allowed, reason = check_policy(f"{metadata_source}\n{raw_json_payload}")
     if not allowed:
         return None, reason
 
-    # Simple key="value" extraction
-    def _extract(key: str, default: str = "") -> str:
-        import re
-        pattern = rf'{key}=["\']([^"\']+)["\']'
-        match = re.search(pattern, message, re.IGNORECASE)
-        return match.group(1) if match else default
+    try:
+        loaded = json.loads(raw_json_payload)
+    except json.JSONDecodeError:
+        return None, _FORMAT_ERROR
+
+    if not isinstance(loaded, dict):
+        return None, _FORMAT_ERROR
+
+    payload: Dict[str, Any] = {k.lower(): v for k, v in loaded.items()}
+
+    title = str(payload.get("title", "")).strip()
+    if not title:
+        return None, "Invalid /promote payload: 'title' is required and cannot be empty."
+
+    target_namespace = metadata.get("namespace", namespace).upper()
+
+    tags_value = metadata.get("tags", "")
+    tags = [t.strip() for t in str(tags_value).split(",") if t.strip()] if tags_value else []
 
     card = KnowledgeCard(
         id=str(uuid.uuid4()),
-        title=_extract("title", "Untitled"),
-        problem=_extract("problem", "No problem statement provided."),
-        solution_pattern=_extract("solution", "No solution provided."),
-        steps=_extract("steps", "").split(";") if _extract("steps") else [],
-        constraints=_extract("constraints", "").split(";") if _extract("constraints") else [],
-        example=_extract("example", ""),
-        anti_pattern=_extract("anti_pattern", ""),
-        tags=[t.strip() for t in _extract("tags", "").split(",") if t.strip()],
-        namespace=namespace,
+        title=title,
+        problem=str(payload.get("problem", "No problem statement provided.")),
+        solution_pattern=str(payload.get("solution_pattern", "No solution provided.")),
+        steps=_to_list(payload.get("steps")),
+        constraints=_to_list(payload.get("constraints")),
+        example=str(payload.get("example", "")),
+        anti_pattern=str(payload.get("anti_pattern", "")),
+        tags=tags,
+        namespace=target_namespace,
         created_at=datetime.now(timezone.utc),
     )
 

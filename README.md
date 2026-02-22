@@ -35,6 +35,16 @@ personal-ai-copilot/
 pip install -r requirements.txt
 ```
 
+## LLM setup (.env)
+
+Create a `.env` file in the project root:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+# Optional (defaults to gpt-4.1-mini)
+MODEL=gpt-4.1-mini
+```
+
 ## Running the server
 
 ```bash
@@ -64,11 +74,16 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 ### Promote a Knowledge Card
 
+`/promote` accepts only a two-line format:
+
+1. First line: metadata (`namespace`, `tags`)
+2. Next line(s): JSON object with card fields
+
 ```bash
 curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "/promote title=\"Retry Pattern\" problem=\"Transient failures\" solution=\"Exponential back-off\" tags=\"resilience,patterns\" namespace=\"PERSONAL\""
+    "message": "/promote namespace=PERSONAL tags=resilience,patterns\n{\"title\":\"Retry Pattern\",\"problem\":\"Transient failures\",\"solution_pattern\":\"Exponential back-off\",\"steps\":[\"detect transient error\",\"retry with backoff\"],\"constraints\":\"idempotent operation\",\"example\":\"HTTP 503 retry\",\"anti_pattern\":\"infinite retry loop\"}"
   }'
 ```
 

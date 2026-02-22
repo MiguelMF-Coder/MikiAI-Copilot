@@ -3,10 +3,11 @@
 from typing import List
 
 from app.kb.schemas import KnowledgeCard
+import app.llm as llm
 
 
 def run(message: str, context: List[KnowledgeCard]) -> str:
-    """Return a stub response for research-related queries.
+    """Generate a research-focused response.
 
     Args:
         message: The user's message.
@@ -15,12 +16,22 @@ def run(message: str, context: List[KnowledgeCard]) -> str:
     Returns:
         A plain-text answer string.
     """
-    context_hint = (
-        f" I found {len(context)} relevant knowledge card(s) in the knowledge base."
-        if context
-        else ""
+    context_lines = []
+    for card in context:
+        context_lines.append(
+            f"- {card.title}: {card.problem} | pattern={card.solution_pattern}"
+        )
+
+    context_text = "\n".join(context_lines) if context_lines else "No KB context available."
+
+    system_prompt = (
+        "You are a research assistant. "
+        "Provide clear, factual, and structured explanations. "
+        "When uncertainty exists, state assumptions and suggest next checks."
     )
-    return (
-        f"[Research Agent] I received your research query.{context_hint} "
-        "This is a stub response — wire up your LLM here."
+    user_prompt = (
+        f"Research question:\n{message}\n\n"
+        f"Knowledge base context:\n{context_text}"
     )
+
+    return llm.call_llm(system_prompt=system_prompt, user_prompt=user_prompt)

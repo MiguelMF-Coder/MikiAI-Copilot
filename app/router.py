@@ -13,6 +13,12 @@ _DEV_KEYWORDS = re.compile(r"\b(debug|code|error|bug|fix|compile|test|deploy)\b"
 # Namespace tokens a user can include in their message
 _NAMESPACE_RE = re.compile(r"\b(PERSONAL|BRIDGE)\b", re.IGNORECASE)
 
+# Explicit hints that mean the user wants KB/RAG context
+_RAG_HINT_RE = re.compile(
+    r"\b(use kb|use knowledge base|based on our patterns|from\s+(bridge|personal)|use_rag\s*=\s*true|rag\s*=\s*true)\b",
+    re.IGNORECASE,
+)
+
 
 def detect_intent(message: str) -> Tuple[str, str, bool]:
     """Analyse *message* and return (intent, namespace, use_rag).
@@ -23,7 +29,8 @@ def detect_intent(message: str) -> Tuple[str, str, bool]:
     - Otherwise                              → intent = "research"
 
     Namespace is extracted from the message when present; defaults to PERSONAL.
-    RAG is enabled for all intents except "curate".
+    RAG is disabled by default and enabled only when explicit KB hints are
+    present (for non-curate intents).
 
     Args:
         message: The raw user message.
@@ -41,7 +48,9 @@ def detect_intent(message: str) -> Tuple[str, str, bool]:
     if stripped.lower().startswith("/promote"):
         return "curate", namespace, False
 
-    if _DEV_KEYWORDS.search(stripped):
-        return "dev", namespace, True
+    use_rag = bool(_RAG_HINT_RE.search(stripped))
 
-    return "research", namespace, True
+    if _DEV_KEYWORDS.search(stripped):
+        return "dev", namespace, use_rag
+
+    return "research", namespace, use_rag

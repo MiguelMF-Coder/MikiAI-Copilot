@@ -2,17 +2,26 @@
 
 import uuid
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
 
 from app.orchestrator import handle
 
+load_dotenv()
+
 app = FastAPI(
     title="MikiAI Copilot",
     description="Personal multi-agent AI copilot MVP.",
     version="0.1.0",
 )
+
+
+@app.get("/")
+def health() -> Dict[str, str]:
+    """Basic health check endpoint."""
+    return {"status": "ok", "docs": "/docs"}
 
 
 class ChatRequest(BaseModel):
