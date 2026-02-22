@@ -45,6 +45,36 @@ OPENAI_API_KEY=your_openai_api_key_here
 MODEL=gpt-4.1-mini
 ```
 
+## Switching LLM providers
+
+### OpenAI provider
+
+Set:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_openai_api_key_here
+# Optional
+MODEL=gpt-4.1-mini
+```
+
+### Ollama provider (local)
+
+Install and run Ollama, then pull a model and serve locally:
+
+```bash
+ollama pull llama3.1:8b
+ollama serve
+```
+
+Set:
+
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+```
+
 ## Running the server
 
 ```bash

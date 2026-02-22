@@ -15,7 +15,9 @@ _NAMESPACE_RE = re.compile(r"\b(PERSONAL|BRIDGE)\b", re.IGNORECASE)
 
 # Explicit hints that mean the user wants KB/RAG context
 _RAG_HINT_RE = re.compile(
-    r"\b(use kb|use knowledge base|based on our patterns|from\s+(bridge|personal)|use_rag\s*=\s*true|rag\s*=\s*true)\b",
+    r"(\buse kb\b|\buse knowledge base\b|\buse my kb\b|\bfrom kb\b|"
+    r"\bbased on our patterns\b|\buse bridge\b|\buse personal\b|"
+    r"\bsearch kb\b|/kb\b|/rag\b|\buse_rag\s*=\s*true\b|\brag\s*=\s*true\b)",
     re.IGNORECASE,
 )
 

@@ -12,18 +12,35 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def mock_llm_call(monkeypatch):
+def mock_llm_call(monkeypatch, request):
     """Prevent network LLM calls and return deterministic text."""
 
-    def _fake_call_llm(system_prompt: str, user_prompt: str) -> str:
-        system = system_prompt.lower()
-        if "software engineering" in system:
-            return "MOCK_DEV_RESPONSE"
-        if "research assistant" in system:
-            return "MOCK_RESEARCH_RESPONSE"
-        return "MOCK_GENERIC_RESPONSE"
+    if request.node.name == "test_llm_provider_env_selection":
+        return
 
-    monkeypatch.setattr("app.llm.call_llm", _fake_call_llm)
+    class _FakeProvider:
+        def generate(self, system_prompt: str, user_prompt: str, max_output_tokens: int) -> str:
+            system = system_prompt.lower()
+            if "software engineering" in system:
+                return "MOCK_DEV_RESPONSE"
+            if "research assistant" in system:
+                return "MOCK_RESEARCH_RESPONSE"
+            return "MOCK_GENERIC_RESPONSE"
+
+    monkeypatch.setattr("app.llm._get_provider", lambda: _FakeProvider())
+
+
+def test_llm_provider_env_selection(monkeypatch):
+    """LLM_PROVIDER should switch provider selection logic without network calls."""
+    import app.llm as llm
+
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    openai_provider = llm._get_provider()
+    assert openai_provider.__class__.__name__ == "OpenAIProvider"
+
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    ollama_provider = llm._get_provider()
+    assert ollama_provider.__class__.__name__ == "OllamaProvider"
 
 
 def _count_cards(namespace: str) -> int:
@@ -83,7 +100,32 @@ def test_chat_dev_intent():
     assert response.status_code == 200
     data = response.json()
     assert data["trace"]["intent"] == "dev"
+    assert data["trace"]["use_rag"] is False
     assert data["answer"] == "MOCK_DEV_RESPONSE"
+
+
+def test_chat_dev_with_use_kb_enables_rag():
+    """Explicit 'use kb' should enable RAG for dev intent."""
+    response = client.post(
+        "/chat",
+        json={"message": "debug this import issue, use kb"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["trace"]["intent"] == "dev"
+    assert data["trace"]["use_rag"] is True
+
+
+def test_chat_use_kb_from_bridge_sets_namespace_and_rag():
+    """KB trigger + explicit namespace should route to BRIDGE with RAG on."""
+    response = client.post(
+        "/chat",
+        json={"message": "use kb from BRIDGE for deployment troubleshooting"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["trace"]["namespace"] == "BRIDGE"
+    assert data["trace"]["use_rag"] is True
 
 
 def test_chat_curate_intent():
