@@ -15,3 +15,6 @@ env/
 .DS_Store
 .idea/
 .vscode/
+
+# Knowledge base runtime files (JSON cards stored locally)
+kb/*.json
